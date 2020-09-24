@@ -1,6 +1,8 @@
 const program = require("commander");
 const fs = require("fs");
 const glob = require("glob");
+const path = require("path");
+const { exec } = require("child_process");
 
 const convert = require("./convert.js");
 const detectJsx = require("./detect-jsx.js");
@@ -67,12 +69,20 @@ const cli = argv => {
     printWidth: parseInt(program.printWidth)
   };
 
+  const basePath = __dirname; //path.resolve(__dirname, '../../appliedblockchain/strading-monorepo/packages/')
+  console.log("------ args", program.args, basePath);
+
   const files = new Set();
   for (const arg of program.args) {
-    for (const file of glob.sync(arg)) {
-      files.add(file);
+    for (const file of glob.sync(`${arg}/**/*.js`, { cwd: basePath })) {
+      if (file.includes("node_modules")) {
+        continue;
+      }
+      files.add(path.join(basePath, file));
     }
   }
+
+  console.log("------ files", files);
 
   for (const file of files) {
     const inFile = file;
@@ -96,6 +106,56 @@ const cli = argv => {
       console.error(`error processing ${inFile}`);
       console.error(e);
     }
+  }
+
+  console.log('------- Going to execute "tsc"');
+  const typesToInstall = new Set();
+  for (const arg of program.args) {
+    const pTsc = exec(
+      `./node_modules/.bin/tsc --noEmit`,
+      { cwd: path.join(basePath, arg) },
+      (err, stdout, stderr) => {
+        console.log("___callback");
+        if (err) {
+          //some err occurred
+          console.error(err);
+        } else {
+          // the *entire* stdout and stderr (buffered)
+          console.log(`stdout: ${stdout}`);
+          console.log(`stderr: ${stderr}`);
+        }
+
+        console.log("----- install", typesToInstall);
+        for (const pkg of typesToInstall) {
+          const pNpmInstall = exec(`npm i -DE ${pkg}`, {
+            cwd: path.join(basePath, arg)
+          });
+          pNpmInstall.stdout.on("data", data => console.log(data));
+        }
+
+        /* 
+      // TODO: If there are flow to ts errors, do not run
+      console.log('----- ts migrate', path.join(basePath, arg))
+      const pTsMigrate = exec(`./node_modules/.bin/ts-migrate -- rename ${path.join(basePath, arg)}`)
+      pTsMigrate.stdout.on('data', data => console.log(data));
+      */
+      }
+    );
+
+    pTsc.stdout.on("data", data => {
+      console.log(data);
+      if (data.includes("`npm install ")) {
+        const match = data.match(/\`npm install ([a-z\/@]+)\`/);
+        if (match && match.length) {
+          //console.log('----- match[1]', match[1]);
+          typesToInstall.add(match[1]);
+        }
+      }
+    });
+
+    pTsc.stderr.on("data", data => console.error(data));
+
+    pTsc.on("close", code => console.log(`tsc exited with code ${code}`));
   }
 };
 

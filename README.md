@@ -17,6 +17,12 @@ afterwards, e.g. changing `SyntheticEvent` to `React.Event`.
 - `yarn global add @khanacademy/flow-to-ts`
 - `flow-to-ts [options] <file globs>`
 
+## To convert flow comments use
+
+```bash
+   yarn convert -- '../relative-path-to-flow-root-dir'
+```
+
 # Playground
 
 https://flow-to-ts.netlify.com
